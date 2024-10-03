@@ -25,7 +25,7 @@ INPUT:
   DATASET_MAPPER_NAME: "mask_former_semantic_traffic"
 SOLVER:
   CHECKPOINT_PERIOD: 1000
-  IMS_PER_BATCH: 12
+  IMS_PER_BATCH: 2
   BASE_LR: 0.00001
   MAX_ITER: 2000
   WARMUP_FACTOR: 1.0
@@ -36,10 +36,10 @@ TEST:
   EVAL_PERIOD: 1000
 
 DATASETS:
-  TRAIN: ("cityscapes_fine_sem_seg_train", "mapillary_vistas_sem_seg_train")
+  TRAIN: ("cityscapes_fine_sem_seg_train",) #, "mapillary_vistas_sem_seg_train")
   TEST: ("cityscapes_fine_sem_seg_val",)
   # TEST: ("fs_laf_val", "fs_static_val", "road_anomaly")
 
 ANOMALY_DETECTOR: "UNO" 
 
-OUTPUT_DIR: './M2F_SWIN-L_cityscapes+vistas_bs_12_2k_uno_synthetic'
+OUTPUT_DIR: './output/M2F_SWIN-L_cityscapes+vistas_bs_12_2k_uno_synthetic'
