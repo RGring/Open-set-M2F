@@ -116,3 +116,4 @@ def add_maskformer2_config(cfg):
     
     cfg.ANOMALY_DETECTOR = "UNO" # "UNO" or "EAM"
     
+    cfg.SOLVER.ACCUMULATE_GRADIENTS_X_TIMES = 1

@@ -67,6 +67,14 @@ class Trainer(DefaultTrainer):
     """
     Extension of the Trainer class adapted to MaskFormer.
     """
+    def __init__(self, cfg):
+        """
+        Args:
+            cfg (CfgNode):
+        """
+        super().__init__(cfg)
+        if cfg.SOLVER.ACCUMULATE_GRADIENTS_X_TIMES > 1:
+            self._trainer.zero_grad_before_forward = True
 
     @classmethod
     def build_evaluator(cls, cfg, dataset_name, output_folder=None):
@@ -161,13 +169,16 @@ class Trainer(DefaultTrainer):
 
     @classmethod
     def build_train_loader(cls, cfg):
+        logger = logging.getLogger("detectron2.trainer")
         # Semantic segmentation dataset mapper
         if cfg.INPUT.DATASET_MAPPER_NAME == "mask_former_semantic":
             mapper = MaskFormerSemanticDatasetMapper(cfg, True)
             return build_detection_train_loader(cfg, mapper=mapper)
         elif cfg.INPUT.DATASET_MAPPER_NAME == "mask_former_semantic_traffic":
             mapper = MaskFormerSemanticDatasetMapperTraffic(cfg, True)
-            return build_detection_train_loader(cfg, mapper=mapper)
+            train_loader = build_detection_train_loader(cfg, mapper=mapper)
+            logger.info(f"Loaded {len(train_loader.dataset.dataset.dataset)} training images")
+            return train_loader
         elif cfg.INPUT.DATASET_MAPPER_NAME == "mask_former_semantic_traffic_oe":
             mapper = MaskFormerSemanticDatasetMapperTrafficWithOE(cfg, True)
             return build_detection_train_loader(cfg, mapper=mapper)
@@ -264,14 +275,41 @@ class Trainer(DefaultTrainer):
                     super().step(closure=closure)
 
             return FullModelGradientClippingOptimizer if enable else optim
+        
+        def maybe_add_gradient_accumulation(optim):
+            accumulate_gradients_x_times = cfg.SOLVER.ACCUMULATE_GRADIENTS_X_TIMES
+            enable = accumulate_gradients_x_times > 1
+            
+            class GradientAccumulationOptimizer(optim):
+                def __init__(self, *args, **kwargs):
+                    super().__init__(*args, **kwargs)
+                    self.accumulate_gradients = accumulate_gradients_x_times
+                    self.step_counter = 0
+                    self.zero_grad_counter = 0
+                    self.logger = logging.getLogger("detectron2.trainer")
+                    
+                def step(self, closure=None):
+                    if self.zero_grad_counter % self.accumulate_gradients == 0:
+                        super().step(closure=closure)
+                    
+                    
+                def zero_grad(self):
+                    if self.zero_grad_counter % self.accumulate_gradients == 0:
+                        super().zero_grad()
+                    self.zero_grad_counter += 1
 
+                    
+            return GradientAccumulationOptimizer if enable else optim
+                       
+                    
+                
         optimizer_type = cfg.SOLVER.OPTIMIZER
         if optimizer_type == "SGD":
-            optimizer = maybe_add_full_model_gradient_clipping(torch.optim.SGD)(
+            optimizer = maybe_add_gradient_accumulation(maybe_add_full_model_gradient_clipping(torch.optim.SGD))(
                 params, cfg.SOLVER.BASE_LR, momentum=cfg.SOLVER.MOMENTUM
             )
         elif optimizer_type == "ADAMW":
-            optimizer = maybe_add_full_model_gradient_clipping(torch.optim.AdamW)(
+            optimizer = maybe_add_gradient_accumulation(maybe_add_full_model_gradient_clipping(torch.optim.AdamW))(
                 params, cfg.SOLVER.BASE_LR
             )
         else:
