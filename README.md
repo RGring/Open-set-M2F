@@ -29,18 +29,18 @@ Similar to Mask2Former repo, see [installation instructions](INSTALL.md).
 ### UNO
 Finetuning a model with the additional negative objectness class with ADE20K negatives:
 ```bash
-python finetune_UNO.py --config-file configs/cityscapes/semantic-segmentation/swin/maskformer2_swin_large_IN21k_384_bs18_2k_city+vistas_uno.yaml --num-gpus 3
+python finetune_UNO.py --config-file configs/cityscapes/semantic-segmentation/swin/maskformer2_swin_large_IN21k_384_bs12_2k_city+vistas_uno.yaml --num-gpus 3
 ```
 
 Finetuning a model with the additional negative objectness class with **synthetic** negatives:
 ```bash
-python finetune_UNO_synthetic.py --config-file  configs/cityscapes/semantic-segmentation/swin/maskformer2_swin_large_IN21k_384_bs18_2k_city+vistas_uno_synthetic.yaml --num-gpus 3
+python finetune_UNO_synthetic.py --config-file  configs/cityscapes/semantic-segmentation/swin/maskformer2_swin_large_IN21k_384_bs12_2k_city+vistas_uno_synthetic.yaml --num-gpus 3
 ```
 
 ### EAM
 Rejecting predictions in negative instances:
 ```bash
-python train_net.py --config-file configs/cityscapes/semantic-segmentation/swin/maskformer2_swin_large_IN21k_384_bs12_2k_city+vistas_oe.yaml
+python train_net.py --config-file configs/cityscapes/semantic-segmentation/swin/maskformer2_swin_large_IN21k_384_bs18_115k_city+vistas_oe.yaml
 ```
 
 
@@ -48,7 +48,7 @@ python train_net.py --config-file configs/cityscapes/semantic-segmentation/swin/
 
 ### UNO
 ```bash
-python train_net.py --config-file  configs/cityscapes/semantic-segmentation/swin/maskformer2_swin_large_IN21k_384_bs18_115k_city+_vistas_uno.yaml --eval-only MODEL.WEIGHTS path_to_model DATASETS.TEST eval_dataset_name
+python train_net.py --config-file  configs/cityscapes/semantic-segmentation/swin/maskformer2_swin_large_IN21k_384_bs12_2k_city+vistas_uno.yaml --eval-only MODEL.WEIGHTS path_to_model DATASETS.TEST eval_dataset_name
 ```
 
 ### EAM
