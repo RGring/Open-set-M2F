@@ -14,14 +14,14 @@ class JointTrainer(AMPTrainer):
     def __init__(self, model, data_loader, optimizer, gather_metric_period=1, zero_grad_before_forward=False, grad_scaler=None, precision: torch.dtype = torch.float16, log_grad_scaler: bool = False, async_write_metrics=False):
         super().__init__(model, data_loader, optimizer, gather_metric_period, zero_grad_before_forward, grad_scaler, precision, log_grad_scaler, async_write_metrics)
         
-        self.flow = model.module.flow
+        self.flow = model.flow
         self.device = model.device
 
         self.flow_optimizer = torch.optim.Adamax(self.flow.parameters(), lr=0.00001, betas=(0.9, 0.999), eps=1e-7)
 
-        self.pixel_mean = model.module.pixel_mean
-        self.pixel_std = model.module.pixel_std
-        self.size_divisibility = model.module.size_divisibility
+        self.pixel_mean = model.pixel_mean
+        self.pixel_std = model.pixel_std
+        self.size_divisibility = model.size_divisibility
 
         self.ignore_label = 255
 
