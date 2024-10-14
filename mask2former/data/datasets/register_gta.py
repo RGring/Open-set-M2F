@@ -110,13 +110,13 @@ CITYSCAPES_SEM_SEG_CATEGORIES = [
         "name": "truck",
         "evaluate": True,
     },
-    {
-        "color": [255, 255, 255],
-        "instances": True,
-        "readable": "unknown",
-        "name": "unknown",
-        "evaluate": True,
-    },
+    # {
+    #     "color": [255, 255, 255],
+    #     "instances": True,
+    #     "readable": "unknown",
+    #     "name": "unknown",
+    #     "evaluate": True,
+    # },
 ]
 
 def _get_gta_meta():
