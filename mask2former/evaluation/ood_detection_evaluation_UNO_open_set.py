@@ -21,6 +21,7 @@ from torchvision.utils import save_image
 import torch.nn.functional as F
 # from mask2former.utils import colorize_labels
 import matplotlib.pyplot as plt
+from .pixel_classification import MetricPixelClassification
 
 _CV2_IMPORTED = True
 try:
@@ -86,8 +87,7 @@ class DenseOODDetectionEvaluatorUNOOpenSet(SemSegEvaluator):
 
     def reset(self):
         super().reset()
-        self._gt = []
-        self._ood_score = []
+        self._bc = []
 
     def process(self, inputs, outputs):
         """
@@ -117,35 +117,25 @@ class DenseOODDetectionEvaluatorUNOOpenSet(SemSegEvaluator):
 
             v = (mask_pred * s_x.view(-1, 1, 1)).sum(0)
             ood_score = - v.to(self._cpu_device)
-            
-            
-            # Anomaly scores
-            gt_vec = torch.from_numpy(gt.copy()).view(-1)
-            if self._dataset_name == 'road_anomaly':
-                gt_vec[gt_vec == 2] = 1
-            elif "cityscapesprivate" in self._dataset_name:
-                gt_vec[gt_vec < 15] = 0
-                gt_vec[gt_vec == 15] = 1
+            # ood_score_normalized = (ood_score - ood_score.min()) / (ood_score.max() - ood_score.min())
 
-            self._ood_score += [ood_score.view(-1)[gt_vec != self._ignore_label]]
-            self._gt += [gt_vec[gt_vec != self._ignore_label]]
-            
-            # score = [ood_score.view(-1)[gt_vec != self._ignore_label]]
-            # gt_labels = [gt_vec[gt_vec != self._ignore_label]]
-            
-            # gt_labels = torch.cat(gt_labels, 0)
-            # score = torch.cat(score, 0)
-            # AUROC, FPR, _ = calculate_stat(score, gt_labels)
-            # AP = average_precision_score(gt_labels, score)
-            # self._gt.append(FPR)
-            # self._ood_score.append(AP)
+            # Anomaly scores
+            gt_anomaly = gt.copy()
+            if self._dataset_name == 'road_anomaly':
+                gt_anomaly[gt_anomaly == 2] = 1
+            elif "cityscapesprivate" in self._dataset_name:
+                gt_anomaly[gt_anomaly < 15] = 0
+                gt_anomaly[gt_anomaly == 15] = 1
+                
+            bc = MetricPixelClassification.process_frame(gt_anomaly, ood_score.cpu().numpy(), 768, 'percentiles')
+            self._bc.append(bc)
             
             # segmentation scores            
             gt[gt == self._ignore_label] = self._num_classes
             # ToDo:Paramaterize
-            anomaly_thresh = 0.9
-            threshold = torch.min(ood_score) + (torch.max(ood_score) - torch.min(ood_score)) * anomaly_thresh
-            seg_output[ood_score > threshold] = self._num_classes - 1
+            anomaly_thresh = 0.85
+            denormalized_anomaly_thresh = ood_score.min() + anomaly_thresh * (ood_score.max() - ood_score.min())
+            seg_output[ood_score > denormalized_anomaly_thresh] = self._num_classes - 1
             seg_output[gt == self._ignore_label] = self._num_classes
             pred = seg_output
 
@@ -162,16 +152,14 @@ class DenseOODDetectionEvaluatorUNOOpenSet(SemSegEvaluator):
             raise Exception('Not implemented.')
         
         # Anomaly metrics
-        gt = torch.cat(self._gt, 0)
-        score = torch.cat(self._ood_score, 0)
-
-        AUROC, FPR, _ = calculate_stat(score, gt)
-        AP = average_precision_score(gt, score)
-
+        # ToDo: Extract component level values
+        curves = MetricPixelClassification.aggregate(self._bc, 'percentiles')
+        
+        print(f"BEst f1 threshold: {curves['best_f1_threshold']}")
         res_odd = {}
-        res_odd["AP"] = AP #100 * np.nanmean(np.array(self._ood_score, dtype=np.float32))
-        # res_odd["AUROC"] = 100 * AUROC
-        res_odd["FPR@TPR95"] = AUROC # 100 * np.nanmean(np.array(self._gt, dtype=np.float32))
+        res_odd["AP"] = 100 * curves['area_PRC'] 
+        res_odd["AUROC"] = 100 * curves['area_ROC'] 
+        res_odd["FPR@TPR95"] = 100 * curves['tpr95_fpr']
 
         # Segmentation metrics
         acc = np.full(self._num_classes, np.nan, dtype=float)

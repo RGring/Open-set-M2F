@@ -21,6 +21,7 @@ from torchvision.utils import save_image
 import torch.nn.functional as F
 # from mask2former.utils import colorize_labels
 import matplotlib.pyplot as plt
+from .pixel_classification import MetricPixelClassification
 
 _CV2_IMPORTED = True
 try:
@@ -130,8 +131,7 @@ class DenseOODDetectionEvaluatorUNO(DatasetEvaluator):
 
 
     def reset(self):
-        self._gt = []
-        self._ood_score = []
+        self._bc = []
 
     def process(self, inputs, outputs):
         """
@@ -157,31 +157,25 @@ class DenseOODDetectionEvaluatorUNO(DatasetEvaluator):
             v = (mask_pred * s_x.view(-1, 1, 1)).sum(0)
             ood_score = - v.to(self._cpu_device)
 
+
             gt_filename = self.input_file_to_gt_file[input["file_name"]]
             gt = self.sem_seg_loading_fn(gt_filename, dtype=np.int64)
-            gt_vec = torch.from_numpy(gt).view(-1)
             if self._dataset_name == 'road_anomaly':
-                gt_vec[gt_vec == 2] = 1
+                gt[gt == 2] = 1
 
-            self._ood_score += [ood_score.view(-1)[gt_vec != self._ignore_label]]
-            self._gt += [gt_vec[gt_vec != self._ignore_label]]
+            bc = MetricPixelClassification.process_frame(gt, ood_score.cpu().numpy(), 768, 'percentiles')
+            self._bc.append(bc)
 
     def evaluate(self):
         if self._distributed:
             raise Exception('Not implemented.')
         
-        gt = torch.cat(self._gt, 0)
-        score = torch.cat(self._ood_score, 0)
-
-        AUROC, FPR, _ = calculate_stat(score, gt)
-        AP = average_precision_score(gt, score)
-
+        curves = MetricPixelClassification.aggregate(self._bc, 'percentiles')
 
         res = {}
-        res["AP"] = 100 * AP
-        res["AUROC"] = 100 * AUROC
-        res["FPR@TPR95"] = 100 * FPR
-
+        res["AP"] = 100 * curves['area_PRC'] 
+        res["AUROC"] = 100 * curves['area_ROC'] 
+        res["FPR@TPR95"] = 100 * curves['tpr95_fpr']
 
         results = OrderedDict({"ood_detection": res})
         self._logger.info(results)

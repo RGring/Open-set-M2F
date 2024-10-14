@@ -7,4 +7,6 @@ h5py
 submitit
 scikit-image
 opencv-python
+pandas
+easydict
 
