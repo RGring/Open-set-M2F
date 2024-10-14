@@ -248,7 +248,7 @@ class MaskFormer(nn.Module):
                     if not self.sem_seg_postprocess_before_inference:
                         r = retry_if_cuda_oom(sem_seg_postprocess)(r, image_size, height, width)
                     # processed_results[-1]["sem_seg"] = r
-                    processed_results[-1]["sem_seg"] = r[:19, :] # closed-set: do not consider k+1 prediction
+                    processed_results[-1]["sem_seg"] = r[:self.sem_seg_head.num_classes-1, :] # closed-set: do not consider k+1 prediction
 
                     processed_results[-1]["mask_pred"] = retry_if_cuda_oom(sem_seg_postprocess)(mask_pred_result,
                                                                                                 image_size, height,
