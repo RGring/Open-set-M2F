@@ -145,7 +145,7 @@ def load_gta(root, split, task):
     # image_files = list(sorted(image_files))
 
     examples = []
-    for im_file in image_files[:50]:
+    for im_file in image_files[:]:
         # Get image size
         img = PIL.Image.open(im_file)
         seg_file_name = im_file.replace('leftImg8bit', 'gtFine').replace('_gtFine.png', f"_labelIds_15_open_set_anomaly.png")
