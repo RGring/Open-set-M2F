@@ -201,7 +201,7 @@ class SetCriterion(nn.Module):
         target_classes[idx] = target_classes_o
 
         ood_targets = torch.zeros_like(target_classes, device=src_logits.device)
-        ood_targets[target_classes==19] = 1
+        ood_targets[target_classes==self.num_classes - 1] = 1
         ood_targets = ood_targets.unsqueeze(-1).repeat(1, 1, self.num_classes-1)
 
         if ood_targets[ood_targets == 1].numel() > 0:
@@ -210,7 +210,7 @@ class SetCriterion(nn.Module):
             m = (cls_out.exp() + uniform_dist) / 2.
             kl_p_m = (F.kl_div(m.log(), cls_out, log_target=True, reduction='none') * ood_targets).sum()
             kl_u_m = (F.kl_div(m.log(), uniform_dist, reduction='none') * ood_targets).sum()
-            loss_jsd = (0.5 * kl_p_m + 0.5 * kl_u_m) / target_classes[target_classes == 19].numel()
+            loss_jsd = (0.5 * kl_p_m + 0.5 * kl_u_m) / target_classes[target_classes == self.num_classes - 1].numel()
         else:
             loss_jsd = torch.tensor(0.0)
 

@@ -11,7 +11,7 @@ from detectron2.structures import Boxes, ImageList, Instances, BitMasks
 
 class JointTrainer(AMPTrainer):
 
-    def __init__(self, model, data_loader, optimizer, gather_metric_period=1, zero_grad_before_forward=False, grad_scaler=None, precision: torch.dtype = torch.float16, log_grad_scaler: bool = False, async_write_metrics=False):
+    def __init__(self, model, data_loader, optimizer, num_classes, gather_metric_period=1, zero_grad_before_forward=False, grad_scaler=None, precision: torch.dtype = torch.float16, log_grad_scaler: bool = False, async_write_metrics=False):
         super().__init__(model, data_loader, optimizer, gather_metric_period, zero_grad_before_forward, grad_scaler, precision, log_grad_scaler, async_write_metrics)
         
         self.flow = model.flow
@@ -19,6 +19,7 @@ class JointTrainer(AMPTrainer):
 
         self.flow_optimizer = torch.optim.Adamax(self.flow.parameters(), lr=0.00001, betas=(0.9, 0.999), eps=1e-7)
 
+        self.num_classes = num_classes
         self.pixel_mean = model.pixel_mean
         self.pixel_std = model.pixel_std
         self.size_divisibility = model.size_divisibility
@@ -78,7 +79,7 @@ class JointTrainer(AMPTrainer):
         bs = self.sample_shape(images.shape[0])
         ood_patch = self.flow.sample(bs)
 
-        images, id_patch, sem_seg_gt = self._paste_square_patch(images, sem_seg_gt, ood_patch, 19)
+        images, id_patch, sem_seg_gt = self._paste_square_patch(images, sem_seg_gt, ood_patch, self.num_classes-1)
         
         images = (images - self.pixel_mean) / self.pixel_std
                 
