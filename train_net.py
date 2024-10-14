@@ -16,6 +16,7 @@ import copy
 import itertools
 import logging
 import os
+import glob
 
 from collections import OrderedDict
 from typing import Any, Dict, List, Set
@@ -318,6 +319,39 @@ class Trainer(DefaultTrainer):
             optimizer = maybe_add_gradient_clipping(cfg, optimizer)
         return optimizer
 
+    @classmethod
+    def test(cls, cfg, model, evaluators=None):
+        results = super().test(cfg, model, evaluators)
+        # read best mIoU
+        try:
+            with open(os.path.join(cfg.OUTPUT_DIR, "best_mIoU"), "r") as f:
+                best_mIoU = float(f.readline())
+        except FileNotFoundError:
+            best_mIoU = 0.0
+        
+        if "sem_seg" in results and results["sem_seg"]["mIoU"] > best_mIoU:
+            # write best mIoU
+            with open(os.path.join(cfg.OUTPUT_DIR, "best_mIoU"), "w") as f:
+                f.write(str(results["sem_seg"]["mIoU"]))
+            # only keep best model to save disk space
+            try:
+                with open(os.path.join(cfg.OUTPUT_DIR, "last_checkpoint"), "r") as f:
+                    last_checkpoint = f.readline()
+                models = glob.glob(os.path.join(cfg.OUTPUT_DIR, "model_*.pth"))
+                [os.remove(model) for model in models if os.path.basename(model) != last_checkpoint]
+                os.rename(os.path.join(cfg.OUTPUT_DIR, last_checkpoint), os.path.join(cfg.OUTPUT_DIR, "model_best.pth"))
+            except FileNotFoundError:
+                pass
+        else:
+            # remove last checkpoint
+            try:
+                with open(os.path.join(cfg.OUTPUT_DIR, "last_checkpoint"), "r") as f:
+                    last_checkpoint = f.readline()
+                os.remove(os.path.join(cfg.OUTPUT_DIR, last_checkpoint))
+            except FileNotFoundError:
+                pass
+        return results
+        
     @classmethod
     def test_with_TTA(cls, cfg, model):
         logger = logging.getLogger("detectron2.trainer")
