@@ -197,6 +197,13 @@ class MaskFormerJointFlow(nn.Module):
                     segments_info (list[dict]): Describe each segment in `panoptic_seg`.
                         Each dict contains keys "id", "category_id", "isthing".
         """
+        if images is None:
+            images = [x["image"].to(self.device) for x in batched_inputs]
+            images = [(x - self.pixel_mean) / self.pixel_std for x in images]
+            images = ImageList.from_tensors(images, self.size_divisibility)
+            image_sizes = images.image_sizes
+            images = images.tensor
+            
         features = self.backbone(images)
         outputs = self.sem_seg_head(features)
 
@@ -230,11 +237,11 @@ class MaskFormerJointFlow(nn.Module):
             del outputs
 
             processed_results = []
-            for mask_cls_result, mask_pred_result, image_size in zip(
-                mask_cls_results, mask_pred_results, image_sizes
+            for mask_cls_result, mask_pred_result, input_per_image, image_size in zip(
+                mask_cls_results, mask_pred_results, batched_inputs, image_sizes
             ):
-                height = image_size[0]
-                width = image_size[1]
+                height = input_per_image.get("height", image_size[0])
+                width = input_per_image.get("width", image_size[1])
                 processed_results.append({})
 
                 if self.sem_seg_postprocess_before_inference:
@@ -249,7 +256,7 @@ class MaskFormerJointFlow(nn.Module):
                     if not self.sem_seg_postprocess_before_inference:
                         r = retry_if_cuda_oom(sem_seg_postprocess)(r, image_size, height, width)
 
-                    processed_results[-1]["sem_seg"] = r[:19, :] # closed-set: do not consider k+1 prediction
+                    processed_results[-1]["sem_seg"] = r[:self.sem_seg_head.num_classes-1, :] # closed-set: do not consider k+1 prediction
                     processed_results[-1]["mask_pred"] = retry_if_cuda_oom(sem_seg_postprocess)(mask_pred_result,
                                                                                                 image_size, height,
                                                                                                 width)

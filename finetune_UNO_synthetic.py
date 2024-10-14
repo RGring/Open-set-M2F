@@ -16,6 +16,7 @@ import copy
 import itertools
 import logging
 import os
+import glob
 
 from collections import OrderedDict
 from typing import Any, Dict, List, Set
@@ -58,6 +59,7 @@ from mask2former import (
     add_maskformer2_config,
     DenseOODDetectionEvaluator,
     DenseOODDetectionEvaluatorUNO,
+    DenseOODDetectionEvaluatorUNOOpenSet,
     MaskFormerSemanticDatasetMapperTrafficWithOE,
     MaskFormerSemanticDatasetMapperTraffic,
     MaskFormerSemanticDatasetMapperWithUNO
@@ -73,8 +75,7 @@ class Trainer(DefaultTrainer):
 
     def __init__(self, cfg):
         super().__init__(cfg)
- 
-        self._trainer = JointTrainer(self.model, self.data_loader, self.optimizer)
+        self._trainer = JointTrainer(self.model, self.data_loader, self.optimizer, cfg.MODEL.SEM_SEG_HEAD.NUM_CLASSES)
 
 
     @classmethod
@@ -110,7 +111,8 @@ class Trainer(DefaultTrainer):
                 
             if cfg.ANOMALY_DETECTOR == "UNO":
                 evaluator_list.append(DenseOODDetectionEvaluatorUNO(dataset_name, distributed=False, output_dir=output_folder))    
-    
+        if evaluator_type == "anomaly_open_set_detection" and cfg.MODEL.MASK_FORMER.TEST.SEMANTIC_ON:
+            evaluator_list.append(DenseOODDetectionEvaluatorUNOOpenSet(dataset_name, distributed=False, output_dir=output_folder))
         # panoptic segmentation
         if evaluator_type in [
             "coco_panoptic_seg",
@@ -278,13 +280,37 @@ class Trainer(DefaultTrainer):
 
             return FullModelGradientClippingOptimizer if enable else optim
 
+        def maybe_add_gradient_accumulation(optim):
+            accumulate_gradients_x_times = cfg.SOLVER.ACCUMULATE_GRADIENTS_X_TIMES
+            enable = accumulate_gradients_x_times > 1
+            
+            class GradientAccumulationOptimizer(optim):
+                def __init__(self, *args, **kwargs):
+                    super().__init__(*args, **kwargs)
+                    self.accumulate_gradients = accumulate_gradients_x_times
+                    self.step_counter = 0
+                    self.zero_grad_counter = 0
+                    self.logger = logging.getLogger("detectron2.trainer")
+                    
+                def step(self, closure=None):
+                    if self.zero_grad_counter % self.accumulate_gradients == 0:
+                        super().step(closure=closure)
+                    
+                    
+                def zero_grad(self):
+                    if self.zero_grad_counter % self.accumulate_gradients == 0:
+                        super().zero_grad()
+                    self.zero_grad_counter += 1
+
+                    
+            return GradientAccumulationOptimizer if enable else optim
         optimizer_type = cfg.SOLVER.OPTIMIZER
         if optimizer_type == "SGD":
-            optimizer = maybe_add_full_model_gradient_clipping(torch.optim.SGD)(
+            optimizer = maybe_add_gradient_accumulation(maybe_add_full_model_gradient_clipping(torch.optim.SGD))(
                 params, cfg.SOLVER.BASE_LR, momentum=cfg.SOLVER.MOMENTUM
             )
         elif optimizer_type == "ADAMW":
-            optimizer = maybe_add_full_model_gradient_clipping(torch.optim.AdamW)(
+            optimizer = maybe_add_gradient_accumulation(maybe_add_full_model_gradient_clipping(torch.optim.AdamW))(
                 params, cfg.SOLVER.BASE_LR
             )
         else:
@@ -292,7 +318,41 @@ class Trainer(DefaultTrainer):
         if not cfg.SOLVER.CLIP_GRADIENTS.CLIP_TYPE == "full_model":
             optimizer = maybe_add_gradient_clipping(cfg, optimizer)
         return optimizer
-
+    
+    # @classmethod
+    # def test(cls, cfg, model, evaluators=None):
+    #     results = super().test(cfg, model, evaluators)
+    #     # read best mIoU
+    #     try:
+    #         with open(os.path.join(cfg.OUTPUT_DIR, "best_mIoU"), "r") as f:
+    #             best_mIoU = float(f.readline())
+    #     except FileNotFoundError:
+    #         best_mIoU = 0.0
+        
+    #     if "sem_seg" in results and results["sem_seg"]["mIoU"] > best_mIoU:
+    #         # write best mIoU
+    #         with open(os.path.join(cfg.OUTPUT_DIR, "best_mIoU"), "w") as f:
+    #             f.write(str(results["sem_seg"]["mIoU"]))
+    #         # only keep best model to save disk space
+    #         try:
+    #             with open(os.path.join(cfg.OUTPUT_DIR, "last_checkpoint"), "r") as f:
+    #                 last_checkpoint = f.readline()
+    #             models = glob.glob(os.path.join(cfg.OUTPUT_DIR, "model_*.pth"))
+    #             [os.remove(model) for model in models if (os.path.basename(model) != last_checkpoint and os.path.basename(model) != "model_final.pth")]
+    #             os.rename(os.path.join(cfg.OUTPUT_DIR, last_checkpoint), os.path.join(cfg.OUTPUT_DIR, "model_best.pth"))
+    #         except FileNotFoundError:
+    #             pass
+    #     else:
+    #         # remove last checkpoint
+    #         try:
+    #             with open(os.path.join(cfg.OUTPUT_DIR, "last_checkpoint"), "r") as f:
+    #                 last_checkpoint = f.readline()
+    #             if last_checkpoint != "model_final.pth":
+    #                 os.remove(os.path.join(cfg.OUTPUT_DIR, last_checkpoint))
+    #         except FileNotFoundError:
+    #             pass
+    #     return results
+    
     @classmethod
     def test_with_TTA(cls, cfg, model):
         logger = logging.getLogger("detectron2.trainer")
