@@ -31,3 +31,4 @@ from .test_time_augmentation import SemanticSegmentorWithTTA
 from .evaluation.instance_evaluation import InstanceSegEvaluator
 from .evaluation.ood_detection_evaluation import DenseOODDetectionEvaluator
 from .evaluation.ood_detection_evaluation_UNO import DenseOODDetectionEvaluatorUNO
+from .evaluation.ood_detection_evaluation_UNO_open_set import DenseOODDetectionEvaluatorUNOOpenSet
